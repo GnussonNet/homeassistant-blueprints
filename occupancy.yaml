@@ -1,0 +1,244 @@
+blueprint:
+  name: Occupancy (Wasp in a Box – Optional Door Open Clear)
+  description: |
+    Implements the 'Wasp in a Box' principle for room occupancy detection
+    using motion and door sensors.
+
+    Set Door Sensor turn off delay to -1 to disable clearing occupancy
+    when the door is left open.
+  domain: automation
+  source_url: https://gist.github.com/AlexanderBabel/487f054b289b61f90afdc837d23cb85e
+
+  input:
+    door_sensor:
+      name: Single Door Sensor or Door Sensor Group
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+            - domain: input_boolean
+
+    motion_sensor:
+      name: Single Motion Sensor or Motion Sensor Group
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+            - domain: input_boolean
+
+    motion_sensor_turn_off_delay:
+      name: Motion Sensor turn off delay
+      description: Time after motion clears before occupancy clears.
+      default: 5
+      selector:
+        number:
+          mode: box
+          min: 0
+          max: 3600
+          unit_of_measurement: seconds
+          step: 1.0
+
+    door_sensor_turn_off_delay:
+      name: Door Sensor turn off delay
+      description: >
+        Time the door must stay open to clear occupancy.
+        Set to -1 to disable door-open clearing entirely.
+      default: 15
+      selector:
+        number:
+          mode: box
+          min: -1
+          max: 3600
+          unit_of_measurement: seconds
+          step: 1.0
+
+    motion_sensor_delay:
+      name: Motion Sensor Delay
+      description: >
+        Time the motion sensor takes before clearing its detected state.
+        Set to -1 to disable.
+      default: -1
+      selector:
+        number:
+          mode: box
+          min: -1
+          max: 3600
+          unit_of_measurement: seconds
+          step: 1.0
+
+    occupancy_helper:
+      name: Occupancy Helper
+      selector:
+        entity:
+          domain: input_boolean
+          multiple: false
+
+    last_motion_helper:
+      name: Last Motion Helper
+      selector:
+        entity:
+          domain: input_datetime
+          multiple: false
+
+variables:
+  door_sensor: !input door_sensor
+  motion_sensor: !input motion_sensor
+  last_motion_helper: !input last_motion_helper
+  motion_sensor_delay: !input motion_sensor_delay
+  door_sensor_turn_off_delay: !input door_sensor_turn_off_delay
+
+trigger:
+  - platform: state
+    entity_id: !input motion_sensor
+    from: "off"
+    to: "on"
+    id: motion
+
+  - platform: state
+    entity_id: !input door_sensor
+    from: "off"
+    to: "on"
+    id: door_opened
+
+  - platform: state
+    entity_id: !input door_sensor
+    from: "on"
+    to: "off"
+    id: door_closed
+
+  - platform: state
+    entity_id: !input motion_sensor
+    from: "on"
+    to: "off"
+    for: !input motion_sensor_turn_off_delay
+    id: clear
+
+  - platform: state
+    entity_id: !input door_sensor
+    to: "on"
+    for: !input door_sensor_turn_off_delay
+    id: door_left_open
+
+condition: []
+
+action:
+  - choose:
+
+    # Motion detected → occupied
+    - conditions:
+        - condition: trigger
+          id: motion
+      sequence:
+        - service: input_datetime.set_datetime
+          target:
+            entity_id: !input last_motion_helper
+          data:
+            timestamp: "{{ as_timestamp(now()) }}"
+
+        - if:
+            - condition: state
+              entity_id: !input occupancy_helper
+              state: "off"
+          then:
+            - service: input_boolean.turn_on
+              target:
+                entity_id: !input occupancy_helper
+
+    # Door opened → occupied
+    - conditions:
+        - condition: trigger
+          id: door_opened
+      sequence:
+        - if:
+            - condition: state
+              entity_id: !input occupancy_helper
+              state: "off"
+          then:
+            - service: input_boolean.turn_on
+              target:
+                entity_id: !input occupancy_helper
+
+    # Clear occupancy logic
+    - conditions:
+        - condition: state
+          entity_id: !input occupancy_helper
+          state: "on"
+        - condition: or
+          conditions:
+
+            # Motion cleared
+            - condition: and
+              conditions:
+                - condition: trigger
+                  id: clear
+                - condition: or
+                  conditions:
+                    - condition: state
+                      entity_id: !input door_sensor
+                      state: "on"
+                    - condition: state
+                      entity_id: !input door_sensor
+                      state: "unavailable"
+                    - condition: state
+                      entity_id: !input door_sensor
+                      state: "unknown"
+                    - condition: template
+                      value_template: >
+                        {{
+                          is_state(door_sensor, 'off')
+                          and (
+                            states[door_sensor].last_changed
+                            > as_local(as_datetime(states(last_motion_helper)))
+                            and (
+                              motion_sensor_delay == -1
+                              or (
+                                motion_sensor_delay > -1
+                                and states[door_sensor].last_changed
+                                >= states[motion_sensor].last_changed
+                                - timedelta(seconds=motion_sensor_delay)
+                              )
+                            )
+                          )
+                        }}
+
+            # Door closed with no motion afterwards
+            - condition: and
+              conditions:
+                - condition: trigger
+                  id: door_closed
+                - condition: state
+                  entity_id: !input motion_sensor
+                  state: "off"
+                - condition: template
+                  value_template: >
+                    {{
+                      states[door_sensor].last_changed
+                      > as_local(as_datetime(states(last_motion_helper)))
+                    }}
+
+            # Door left open (OPTIONAL – disabled with -1)
+            - condition: and
+              conditions:
+                - condition: template
+                  value_template: "{{ door_sensor_turn_off_delay != -1 }}"
+                - condition: trigger
+                  id: door_left_open
+                - condition: state
+                  entity_id: !input motion_sensor
+                  state: "off"
+                - condition: template
+                  value_template: >
+                    {{
+                      states[door_sensor].last_changed
+                      > as_local(as_datetime(states(last_motion_helper)))
+                    }}
+
+      sequence:
+        - service: input_boolean.turn_off
+          target:
+            entity_id: !input occupancy_helper
+
+  default: []
+
+mode: queued
+max: 10
