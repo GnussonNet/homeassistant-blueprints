@@ -33,12 +33,12 @@ blueprint:
           step: 1.0
     door_sensor_turn_off_delay:
       name: Door Sensor turn off delay
-      description: "In order to automatically set the occupancy to clear when the door was opened and left open. This only clears the occupancy when there was no motion detected between opening the door and the period of this turn off delay period. (Default = 15s, -1 = Disabled)"
+      description: "In order to automatically set the occupancy to clear when the door was opened and left open. This only clears the occupancy when there was no motion detected between opening the door and the period of this turn off delay period. (Default = 15s)"
       default: 15
       selector:
         number:
           mode: box
-          min: -1
+          min: 0
           max: 3600
           unit_of_measurement: seconds
           step: 1.0
@@ -74,7 +74,6 @@ variables:
   motion_sensor: !input motion_sensor
   last_motion_helper: !input last_motion_helper
   motion_sensor_delay: !input motion_sensor_delay
-  door_sensor_turn_off_delay: !input door_sensor_turn_off_delay
 trigger:
   - platform: state
     entity_id: !input motion_sensor
@@ -190,8 +189,6 @@ action:
         conditions:
         - condition: trigger
           id: door_left_open
-        - condition: template
-          value_template: "{{ door_sensor_turn_off_delay != -1 }}"
         - condition: state
           entity_id: !input motion_sensor
           state: "off"
