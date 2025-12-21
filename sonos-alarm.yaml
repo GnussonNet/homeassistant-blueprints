@@ -1,29 +1,33 @@
 blueprint:
-  name: Update Sonos Alarm Time
-  description: Update a Sonos alarm time using sonos.update_alarm
+  name: Update Sonos Alarm (Data + Time)
+  description: >
+    Update a Sonos alarm using sonos.update_alarm.
+    Accepts arbitrary service data and a time-only input for start_time.
   domain: automation
 
   input:
-    trigger_time:
-      name: New Alarm Time
+    update_time:
+      name: Alarm Time
       description: Time to set the Sonos alarm to
       selector:
         time: {}
 
-    alarm_id:
-      name: Sonos Alarm ID
-      description: The ID of the Sonos alarm to update
+    alarm_data:
+      name: Sonos Alarm Data
+      description: >
+        Additional data to pass to sonos.update_alarm
+        (must include alarm_id)
       selector:
-        text: {}
+        object: {}
 
 mode: single
 
 trigger:
   - platform: time
-    at: !input trigger_time
+    at: !input update_time
 
 action:
   - service: sonos.update_alarm
     data:
-      alarm_id: !input alarm_id
-      start_time: !input trigger_time
+      start_time: !input update_time
+    data_template: !input alarm_data
