@@ -44,24 +44,31 @@ trigger:
 action:
   - choose:
 
+      # -------------------------
       # HA → Sonos
+      # -------------------------
       - conditions:
           - condition: trigger
             id: ha_time_changed
           - condition: template
             value_template: >
-              {{ states(input.alarm_time)
-                 != state_attr(input.sonos_alarm_switch, 'time') }}
+              {{ trigger.from_state is not none
+                 and trigger.to_state.state
+                    != state_attr(trigger.entity_id
+                       | replace(states(trigger.entity_id), states(trigger.entity_id)),
+                       'time') }}
         sequence:
           - service: sonos.update_alarm
             target:
               entity_id: !input target_sonos
             data:
               alarm_id: !input alarm_id
-              time: "{{ states(input.alarm_time) }}"
+              time: "{{ trigger.to_state.state }}"
               enabled: true
 
+      # -------------------------
       # Sonos → HA
+      # -------------------------
       - conditions:
           - condition: trigger
             id: sonos_time_changed
