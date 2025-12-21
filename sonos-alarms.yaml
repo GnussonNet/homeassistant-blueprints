@@ -1,42 +1,79 @@
 blueprint:
-  name: Update Sonos Alarm from Input Datetime
+  name: Bidirectional Sonos Alarm Time Sync
   description: >
-    Updates a Sonos alarm when an input_datetime (time-only) is changed
-    and automatically enables the alarm.
+    Keeps a Sonos alarm and an input_datetime (time-only) in sync.
+    Changes from Home Assistant update Sonos, and changes from the
+    Sonos app update Home Assistant. Alarm is auto-enabled.
   domain: automation
 
   input:
     alarm_time:
       name: Input Datetime (Time Only)
-      description: input_datetime entity used to control the alarm time
       selector:
         entity:
           domain: input_datetime
 
+    sonos_alarm_switch:
+      name: Sonos Alarm Switch
+      selector:
+        entity:
+          domain: switch
+
     target_sonos:
       name: Sonos Player
-      description: Sonos media_player entity to target
       selector:
         entity:
           domain: media_player
 
     alarm_id:
       name: Sonos Alarm ID
-      description: The ID of the Sonos alarm to update
       selector:
         text: {}
 
 mode: single
 
 trigger:
-  - platform: state
+  - id: ha_time_changed
+    platform: state
     entity_id: !input alarm_time
 
+  - id: sonos_time_changed
+    platform: state
+    entity_id: !input sonos_alarm_switch
+
 action:
-  - service: sonos.update_alarm
-    target:
-      entity_id: !input target_sonos
-    data:
-      alarm_id: !input alarm_id
-      time: "{{ states(trigger.entity_id) }}"
-      enabled: true
+  - choose:
+
+      # HA → Sonos
+      - conditions:
+          - condition: trigger
+            id: ha_time_changed
+          - condition: template
+            value_template: >
+              {{ trigger.from_state is not none
+                 and states(!input alarm_time)
+                    != state_attr(!input sonos_alarm_switch, 'time') }}
+        sequence:
+          - service: sonos.update_alarm
+            target:
+              entity_id: !input target_sonos
+            data:
+              alarm_id: !input alarm_id
+              time: "{{ states(!input alarm_time) }}"
+              enabled: true
+
+      # Sonos → HA
+      - conditions:
+          - condition: trigger
+            id: sonos_time_changed
+          - condition: template
+            value_template: >
+              {{ trigger.from_state is not none
+                 and trigger.to_state.attributes.time
+                    != trigger.from_state.attributes.time }}
+        sequence:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input alarm_time
+            data:
+              time: "{{ trigger.to_state.attributes.time }}"
