@@ -50,16 +50,15 @@ action:
             id: ha_time_changed
           - condition: template
             value_template: >
-              {{ trigger.from_state is not none
-                 and states(!input alarm_time)
-                    != state_attr(!input sonos_alarm_switch, 'time') }}
+              {{ states(input.alarm_time)
+                 != state_attr(input.sonos_alarm_switch, 'time') }}
         sequence:
           - service: sonos.update_alarm
             target:
               entity_id: !input target_sonos
             data:
               alarm_id: !input alarm_id
-              time: "{{ states(!input alarm_time) }}"
+              time: "{{ states(input.alarm_time) }}"
               enabled: true
 
       # Sonos → HA
