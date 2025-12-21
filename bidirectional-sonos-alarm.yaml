@@ -5,7 +5,6 @@ blueprint:
     Changes from Home Assistant update Sonos, and changes from the
     Sonos app update Home Assistant. Alarm is auto-enabled.
   domain: automation
-
   input:
     alarm_time:
       name: Input Datetime (Time Only)
@@ -25,11 +24,6 @@ blueprint:
         entity:
           domain: media_player
 
-    alarm_id:
-      name: Sonos Alarm ID
-      selector:
-        text: {}
-
 mode: single
 
 trigger:
@@ -42,8 +36,14 @@ trigger:
     entity_id: !input sonos_alarm_switch
 
 action:
-  - choose:
+  # Assign inputs to plain variables first
+  - variables:
+      alarm_switch_entity: !input sonos_alarm_switch
+      sonos_target: !input target_sonos
+      alarm_time_entity: !input alarm_time
+      alarm_id: "{{ state_attr(alarm_switch_entity, 'alarm_id') }}"
 
+  - choose:
       # -------------------------
       # HA → Sonos
       # -------------------------
@@ -54,15 +54,13 @@ action:
             value_template: >
               {{ trigger.from_state is not none
                  and trigger.to_state.state
-                    != state_attr(trigger.entity_id
-                       | replace(states(trigger.entity_id), states(trigger.entity_id)),
-                       'time') }}
+                    != state_attr(trigger.entity_id, 'time') }}
         sequence:
           - service: sonos.update_alarm
             target:
-              entity_id: !input target_sonos
+              entity_id: "{{ sonos_target }}"
             data:
-              alarm_id: !input alarm_id
+              alarm_id: "{{ alarm_id }}"
               time: "{{ trigger.to_state.state }}"
               enabled: true
 
@@ -80,6 +78,6 @@ action:
         sequence:
           - service: input_datetime.set_datetime
             target:
-              entity_id: !input alarm_time
+              entity_id: "{{ alarm_time_entity }}"
             data:
               time: "{{ trigger.to_state.attributes.time }}"
