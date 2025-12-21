@@ -1,8 +1,8 @@
 blueprint:
   name: Update Sonos Alarm from Input Datetime
   description: >
-    Updates a Sonos alarm when an input_datetime (time-only) is changed.
-    Automatically enables the alarm.
+    Updates a Sonos alarm when an input_datetime (time-only) is changed
+    and automatically enables the alarm.
   domain: automation
 
   input:
@@ -13,29 +13,18 @@ blueprint:
         entity:
           domain: input_datetime
 
+    target_sonos:
+      name: Sonos Player
+      description: Sonos media_player entity to target
+      selector:
+        entity:
+          domain: media_player
+
     alarm_id:
       name: Sonos Alarm ID
       description: The ID of the Sonos alarm to update
       selector:
         text: {}
-
-    volume:
-      name: Alarm Volume
-      description: Optional alarm volume
-      default: null
-      selector:
-        number:
-          min: 0
-          max: 100
-          step: 1
-          mode: slider
-
-    include_linked_zones:
-      name: Include Linked Zones
-      description: Play alarm on grouped Sonos players
-      default: false
-      selector:
-        boolean: {}
 
 mode: single
 
@@ -45,12 +34,9 @@ trigger:
 
 action:
   - service: sonos.update_alarm
+    target:
+      entity_id: !input target_sonos
     data:
       alarm_id: !input alarm_id
-      time: "{{ states(!input alarm_time) }}"
+      time: "{{ states(trigger.entity_id) }}"
       enabled: true
-      include_linked_zones: !input include_linked_zones
-      volume: >
-        {% if ( !input volume ) is not none %}
-        {{ !input volume }}
-        {% endif %}
